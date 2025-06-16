@@ -1,0 +1,242 @@
+clear variables; close all; clc; addpath(genpath('../Functions'));Units;FigureDefault;
+
+% Box
+lambda0 = 1*um; % center wavelength
+n_imm = 1;
+lambda  = lambda0/n_imm; k0 = 2*pi/lambda;
+
+Box = [20*um, 20*um, 5*um];ber
+dr  = [10*nm, 10*nm, 10*nm];
+[Box,N] = Box_Regularization(Box,dr);
+
+[x, y, z, x0_index, y0_index, z0_index, fx, fy, dfx, dfy, X, Y, FX, FY] = coordinates(N, dr);
+
+Pdz  = Propagator(lambda,FX,FY,dr(3));
+Diagnose_Propagator(X, Y, z, dr, x0_index,y0_index, z0_index, fx, fy, Pdz, k0, lambda);
+%Diagnose_Propagator_accumulation(X, Y, dr, Pdz, k0, lambda);
+
+% Generate the input plane wave
+thetain = 0/180*pi; % input angle
+[thetain,fxin] = Angle_Regularization(thetain,lambda,dfx);
+uin = exp(1i*2*pi*fxin*X);
+
+
+Diagnose_Propagator_Plane_Wave(uin,z,dr,thetain,lambda,Pdz);
+
+
+
+
+
+% The phaser factor of the field at the z=0 plane
+angle_correction = exp(1i*2*pi*(0-z(1))*cos(thetain)/lambda);
+
+% The sphere
+shape = 'point';
+nsphere=1.002;%n_array(ii);%1.2;
+MakePoint([nsphere,n_imm], Box, x0_index, y0_index, z0_index, N, dr,k0);
+
+V_total = VoxelCounter(shape);
+N_Voxel = V_total./(-(k0)^2*((nsphere).^2-n_imm^2))./dr(1)./dr(2)./dr(3);
+
+%shape = 'softball';
+%n_center=1.002;%1.2;
+%sigma = 2*um;
+%MakeSoftballHDF5(sigma, [n_center,n_imm], Box, X, Y, z,N,dr, k0);
+
+% small box for MOM
+box = [2*um, 2*um, 2*um];
+
+% Correct ouput wave
+
+uin_xy = exp(1i*2*pi*fxin*X)*exp(1i*2*pi*(z(end)-z(1)+dr(3))*cos(thetain)/lambda);
+
+[X1,Z1] = meshgrid(x,z);
+uin_xz = exp(1i*2*pi*fxin*X1).*exp(1i*2*pi*(Z1-z(1)+dr(3))*cos(thetain)/lambda);
+
+[Y1,Z1] = meshgrid(y,z);
+uin_yz = exp(1i*2*pi*(Z1-z(1)+dr(3))*cos(thetain)/lambda);
+
+
+dGk = -0.001;
+Eps = 0;
+% initialize
+%udL = uin;
+Gamma = Gammadz(lambda,FX,FY);
+Gdz  = GOlivier(X, Y, dr(1), dr(2),   dr(3), k0);%G_kx_ky(FX,FY,n_imm,lambda,  dr(3),dGk,Eps)./dr(1)./dr(2);GOlivier(X, Y, dr(1), dr(2),   dr(3), k0);
+Diagnose_Green(Gdz, fx, fy, lambda);
+
+[U_MLB_xy, U_MLB_xz, U_MLB_yz]=MLB(shape,uin,Gdz,Pdz, uin_xy, uin_xz, uin_yz, x0_index, y0_index);
+
+z_positive = z(z0_index+1:end);
+U_MLB_xz_positive = U_MLB_xz(z0_index:end,:);
+
+U_G_xz = 0*U_MLB_xz_positive;
+parfor ii=1:size(z_positive,2)
+    U_G_xz(ii,:) = angle_correction*V_total*ScalarG(X(:,x0_index), Y(:,x0_index), z_positive(ii), k0);
+end
+
+
+parfor ii=1:size(z_positive,2)
+    error_U_xy(ii) = norm(U_G_xz(ii,:) - U_MLB_xz_positive(ii,:),2)/norm(U_G_xz(ii,:),2);
+end
+figure
+plot(z_positive/um,error_U_xy)
+set(gcf, 'Position', get(0, 'Screensize'));
+
+
+U_P_xz = 0*U_MLB_xz_positive;
+SV_src = zeros(N(1),N(2));
+SV_src(x0_index,y0_index) = angle_correction*V_total;
+
+Us=myifft((myfft(SV_src)).*Pdz);
+
+for ii = 1:size(z_positive,2)
+    U_P_xz(ii,:) = Us(:,x0_index);
+    Us=myifft((myfft(Us)).*Pdz);
+    error_UP_xy(ii) = norm(U_P_xz(ii,:) - U_MLB_xz_positive(ii,:),2)/norm(U_P_xz(ii,:),2);
+end
+figure
+plot(z_positive/um,error_UP_xy)
+set(gcf, 'Position', get(0, 'Screensize'));
+
+
+
+
+
+
+U_P_xz = 0*U_MLB_xz_positive;
+
+SV_src = zeros(N(1),N(2));
+SV_src(x0_index,y0_index) = angle_correction*V_total;
+for ii = 1:size(z_positive,2)
+    Prop = Propagator(lambda,FX,FY,z(ii));
+    Us=myifft((myfft(SV_src)).*Prop);
+    U_P_xz(ii,:) = Us(:,x0_index);
+    error_UP_xy(ii) = norm(U_P_xz(ii,:) - U_MLB_xz_positive(ii,:),2)/norm(U_P_xz(ii,:),2);
+end
+
+figure
+plot(z_positive/um,error_UP_xy)
+set(gcf, 'Position', get(0, 'Screensize'));
+z_positive = z(z0_index+1:end);
+figure
+subplot(1,4,1)
+imagesc(z_positive/um,y/um,abs(U_MLB_xz(z0_index+1:end,:))')
+%axis square
+colorbar
+
+subplot(1,4,2)
+imagesc(z_positive/um,y/um,abs(U_G_xz(z0_index+1:end,:))')
+%axis square
+colorbar
+
+subplot(1,4,3)
+imagesc(z_positive/um,y/um,abs(U_P_xz(z0_index+1:end,:))')
+%axis square
+colorbar
+
+subplot(1,4,4)
+imagesc(z_positive/um,y/um,abs(U_G_xz(z0_index+1:end,:)-U_P_xz(z0_index+1:end,:))')
+%axis square
+colorbar
+set(gcf, 'Position', get(0, 'Screensize'));
+
+for ii = 1:size(z_positive,2)
+    ii
+    errorU(ii) = norm( U_G_xz(z0_index+1:end,:)-U_P_xz(z0_index+1:end,:),2 ) / norm( U_G_xz(z0_index+1:end,:),2 );
+end
+
+figure
+plot(z_positive/um,errorU)
+set(gcf, 'Position', get(0, 'Screensize'));
+
+figure_window = [-Box(1)/3/um Box(1)/3/um];
+
+figure
+subplot(2,5,1)
+imagesc(x/um,y/um,abs(U_MLB_xy))
+axis square
+colorbar
+title('|Us_{out}|')
+xlim(figure_window)
+ylim(figure_window)
+xlabel('x(um)')
+ylabel('y(um)')
+
+subplot(2,5,6)
+imagesc(x/um,y/um,angle(U_MLB_xy))
+axis square
+colorbar
+title('\angle Us_{out}')
+xlim(figure_window)
+ylim(figure_window)
+xlabel('x(um)')
+ylabel('y(um)')
+
+subplot(2,5,[2,7])
+imagesc(z/um,x/um,abs(U_MLB_xz.'))
+axis square
+colorbar
+title('|Us_{xz}|')
+axis equal
+xlabel('z(um)')
+ylabel('x(um)')
+
+subplot(2,5,[3,8])
+imagesc(z/um,x/um,angle(U_MLB_xz.'))
+axis square
+colorbar
+title('\angle Us_{xz}')
+axis equal
+xlabel('z(um)')
+ylabel('x(um)')
+
+subplot(2,5,[4,9])
+imagesc(z/um,y/um,abs(U_MLB_yz.'))
+axis square
+colorbar
+title('|Us_{yz}|')
+axis equal
+xlabel('z(um)')
+ylabel('y(um)')
+
+subplot(2,5,[5,10])
+imagesc(z/um,y/um,angle(U_MLB_yz.'))
+axis square
+colorbar
+title('\angle Us_{yz}')
+axis equal
+xlabel('z(um)')
+ylabel('y(um)')
+
+sgtitle('MLB')
+set(gcf, 'Position', get(0, 'Screensize'));
+set(findall(gcf,'-property','FontSize'),'FontSize',30)
+
+%lmax=20;
+%angle_correction = exp(1i*2*pi*(0-z(1)+dr(3))*cos(thetain)/lambda);
+%U_Mie = angle_correction.*ScalarMieField(X,Y,z,thetain,lmax,n_imm,nsphere,k0,rad);
+G_particle = ScalarG(X, Y, z(end), k0);
+
+U_RemiJohn = angle_correction*V_total*G_particle;
+
+figure
+subplot(1,2,1)
+imagesc(x/um,y/um,abs(U_RemiJohn))
+axis square
+colorbar
+title('|Us_{RemiJohn}|')
+xlim(figure_window)
+ylim(figure_window)
+xlabel('x(um)')
+ylabel('y(um)')
+
+subplot(1,2,2)
+imagesc(x/um,y/um,angle(U_RemiJohn))
+axis square
+colorbar
+title('\angle Us_{RemiJohn}')
+xlim(figure_window)
+ylim(figure_window)
+xlabel('x(um)')
+ylabel('y(um)')
