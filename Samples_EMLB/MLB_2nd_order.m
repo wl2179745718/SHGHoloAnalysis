@@ -1,0 +1,293 @@
+clear variables; close all; clc; addpath(genpath('../Functions'));
+
+% Global Parameters
+
+dx          = .1;       % pixel size (x,y) in object space (microns)
+dz          = .1;       % pixel size (x,y) in object space (microns)
+lambda      =  1;       % central wavelength (microns)  
+n_imm       =  1;       % refractive index of immersion media
+c=299792458;
+k0=(2*pi)/lambda;
+k=k0*n_imm;
+%N           = [N_array(ii)-1, N_array(ii)-1, 2^9];                  % lateral pixel dimension 
+L = [30, 30, 30];
+delta = [dx, dx, dz];
+%N = round(L./delta);
+deltaf = 1./L;     
+
+% The grid
+
+[N, x,y,z] = L2xyz(L,delta);
+[X,Y]=meshgrid(x,y);
+[fx,fy] = L2fxfy(L,delta);
+[fxx,fyy]   = meshgrid(fx,fx);      % 2D grid in fx/fy
+
+% The sphere
+
+shape = 'sphere';
+
+nsphere=1.01;%1.2;
+n=[nsphere,n_imm];
+rad = 2;
+MakeSphereHDF5(rad, n, L, X, Y, z, N, delta,k0);
+
+% The incident field
+
+NA_in = 0.6;
+NA_in = round(NA_in/deltaf(1)*n_imm/lambda)*deltaf(1)/n_imm*lambda;
+phi       = asin(NA_in);  
+U_in=exp(1i*k*sin(phi)*X);
+
+% The Green's function
+
+dGk = 1;
+Eps = n_imm^2/lambda^2*0.05;
+Gdz  = GOlivier(X, Y, dx, dx, dz, k0);%G_kx_ky(fxx,fyy,n_imm,lambda,dz,dGk,Eps);
+G2dz = GOlivier(X, Y, dx, dx, 2*dz, k0);%G_kx_ky(fxx,fyy,n_imm,lambda,2*dz,dGk,Eps);
+G3dz = GOlivier(X, Y, dx, dx, 3*dz, k0);%G_kx_ky(fxx,fyy,n_imm,lambda,3*dz,dGk,Eps);
+G4dz = GOlivier(X, Y, dx, dx, 4*dz, k0);%G_kx_ky(fxx,fyy,n_imm,lambda,4*dz,dGk,Eps);
+Pdz = Propagator(n_imm,lambda,fxx,fyy,dz);
+Gamma = Gammadz(n_imm,lambda,fxx,fyy);
+
+P2dz = Propagator(n_imm,lambda,fxx,fyy,2*dz);
+
+
+order = 1;
+
+E_MLB_3d=MultiLayerBornv3(shape,dz,0,U_in,Gdz,Pdz);
+[E_MLB2_3d, Nz_2] = MLB2order(shape,dz,0,U_in,Gdz,Pdz,P2dz);
+[E_MLB4_3d, Nz_4] = MLB4order(shape,dz,0,U_in,Gdz,G2dz,G3dz,G4dz,Pdz);
+
+E_MLB_3d_inc=MultiLayerBornv3(shape,dz,1,U_in,Gdz,Pdz);
+[E_MLB2_3d_inc, ~] = MLB2order(shape,dz,1,U_in,Gdz,Pdz,P2dz);
+[E_MLB4_3d_inc, ~] = MLB4order(shape,dz,1,U_in,Gdz,G2dz,G3dz,G4dz,Pdz);
+
+E_sca_MLB = E_MLB_3d-E_MLB_3d_inc;
+E_sca_MLB2 = E_MLB2_3d-E_MLB2_3d_inc;
+E_sca_MLB4 = E_MLB4_3d-E_MLB4_3d_inc;
+
+E_sca_MLB  = E_sca_MLB ./max(max(abs(E_sca_MLB )));
+E_sca_MLB2 = E_sca_MLB2./max(max(abs(E_sca_MLB2)));
+E_sca_MLB4 = E_sca_MLB4./max(max(abs(E_sca_MLB4)));
+
+%[x_sca_MLB, y_sca_MLB] = center(X,Y,E_sca_MLB);
+
+[E_sca_Mie] = Mie_plane(X,Y,z(end),phi,k,rad,c/lambda,n_imm^2,1,nsphere^2,1,40);
+%[x_sca_Mie, y_sca_Mie] = center(X,Y,E_sca_Mie);
+
+%corr_m = corr(E_sca_MLB(round(end/2),:), E_sca_Mie(round(end/2),:));
+%crr = xcorr2(E_sca_MLB,E_sca_Mie);
+%[ssr,snd] = max(crr(:));
+%[i,j] = ind2sub(size(crr),snd);
+
+
+%cond = abs(E_sca_Mie) > thrsh & abs(E_sca_MSL) > thrsh;
+
+%E_Mie_corr = E_sca_Mie.*cond;
+%E_MSL_corr = E_sca_MSL.*cond;
+
+%fun = @(x)norm(abs((x(1)+1i*x(2))*E_Mie_corr - E_MSL_corr));
+%x0 = [1,0];
+%x_factor = fminsearch(fun,x0);
+
+%E_Mie_MSL = (x_factor(1)+1i*x_factor(2))*E_sca_Mie;
+
+
+
+%E_sca_MLB  = normalize(E_sca_MLB, E_sca_Mie, thrsh);
+%E_sca_MLB2 = normalize(E_sca_MLB2, E_sca_Mie, thrsh);
+%E_sca_MLB4 = normalize(E_sca_MLB4, E_sca_Mie, thrsh);
+
+E_sca_Mie = E_sca_Mie ./ max(max(abs(E_sca_Mie)));% * max(max(abs(E_sca_MLB)));
+
+%thrsh = 0.2 * max(max(abs(E_sca_MLB)));
+
+%E_sca_Mie  = normalize(E_sca_Mie, E_sca_MLB, thrsh);
+
+
+NA = 0.2790;
+
+%E_sca_Mie=E_sca_Mie./4/pi;
+
+E_MLB_sca = BPM(E_sca_MLB, 0, NA, k, 2*pi*fxx, 2*pi*fyy);
+E_MLB2_sca = BPM(E_sca_MLB2, 0, NA, k, 2*pi*fxx, 2*pi*fyy);
+E_MLB4_sca = BPM(E_sca_MLB4, 0, NA, k, 2*pi*fxx, 2*pi*fyy);
+E_Mie_sca = BPM(E_sca_Mie, 0, NA, k, 2*pi*fxx, 2*pi*fyy);
+
+cmax_sca_E = max(max(abs(E_MLB_sca)));
+cmax_sca_I = max(max(abs(E_MLB_sca).^2));
+
+figure
+%set(gcf, 'Position', get(0, 'Screensize'));
+colormap(gray(256));
+subplot(4, 5, 1)
+imagesc(x,y,abs(E_sca_MLB))
+axis square
+colorbar
+title('MLB |E| at last layer')
+%clim([0 cmax_sca_E]);
+
+subplot(4, 5, 2)
+imagesc(x,y,angle(E_sca_MLB))
+axis square
+colorbar
+title('MLB \angle E at last layer')
+
+subplot(4, 5, 3)
+imagesc(x,y,abs(E_MLB_sca))
+axis square
+colorbar
+title('MLB |E| from E_{sca}')
+xlim([-2*rad 2*rad])
+ylim([-2*rad 2*rad])
+clim([0 cmax_sca_E]);
+
+subplot(4, 5, 4)
+imagesc(x,y,angle(E_MLB_sca))
+axis square
+colorbar
+title('MLB \angle E from E_{sca}')
+xlim([-2*rad 2*rad])
+ylim([-2*rad 2*rad])
+
+subplot(4, 5, 5)
+imagesc(x,y,abs(E_MLB_sca).^2)
+axis square
+colorbar
+title('MLB I from E_{sca}')
+xlim([-2*rad 2*rad])
+ylim([-2*rad 2*rad])
+clim([0 cmax_sca_I]);
+
+
+subplot(4, 5, 6)
+imagesc(x,y,abs(E_sca_MLB2))
+axis square
+colorbar
+title('MLB2 |E| at last layer')
+%clim([0 cmax_sca_E]);
+
+subplot(4, 5, 7)
+imagesc(x,y,angle(E_sca_MLB2))
+axis square
+colorbar
+title('MLB2 \angle E at last layer')
+
+subplot(4, 5, 8)
+imagesc(x,y,abs(E_MLB2_sca))
+axis square
+colorbar
+title('MLB2 |E| from E_{sca}')
+xlim([-2*rad 2*rad])
+ylim([-2*rad 2*rad])
+clim([0 cmax_sca_E]);
+
+subplot(4, 5, 9)
+imagesc(x,y,angle(E_MLB2_sca))
+axis square
+colorbar
+title('MLB2 \angle E from E_{sca}')
+xlim([-2*rad 2*rad])
+ylim([-2*rad 2*rad])
+
+subplot(4, 5, 10)
+imagesc(x,y,abs(E_MLB2_sca).^2)
+axis square
+colorbar
+title('MLB2 I from E_{sca}')
+xlim([-2*rad 2*rad])
+ylim([-2*rad 2*rad])
+clim([0 cmax_sca_I]);
+
+
+subplot(4, 5, 11)
+imagesc(x,y,abs(E_sca_MLB4))
+axis square
+colorbar
+title('MLB2 |E| at last layer')
+%clim([0 cmax_sca_E]);
+
+subplot(4, 5, 12)
+imagesc(x,y,angle(E_sca_MLB4))
+axis square
+colorbar
+title('MLB2 \angle E at last layer')
+
+subplot(4, 5, 13)
+imagesc(x,y,abs(E_MLB4_sca))
+axis square
+colorbar
+title('MLB2 |E| from E_{sca}')
+xlim([-2*rad 2*rad])
+ylim([-2*rad 2*rad])
+clim([0 cmax_sca_E]);
+
+subplot(4, 5, 14)
+imagesc(x,y,angle(E_MLB4_sca))
+axis square
+colorbar
+title('MLB2 \angle E from E_{sca}')
+xlim([-2*rad 2*rad])
+ylim([-2*rad 2*rad])
+
+subplot(4, 5, 15)
+imagesc(x,y,abs(E_MLB4_sca).^2)
+axis square
+colorbar
+title('MLB2 I from E_{sca}')
+xlim([-2*rad 2*rad])
+ylim([-2*rad 2*rad])
+clim([0 cmax_sca_I]);
+
+
+subplot(4, 5, 16)
+imagesc(x,y,abs(E_sca_Mie))
+axis square
+colorbar
+title('Mie |E| at last layer')
+%clim([0 cmax_sca_E]);
+
+subplot(4, 5, 17)
+imagesc(x,y,angle(E_sca_Mie))
+axis square
+colorbar
+title('Mie \angle E at last layer')
+
+subplot(4, 5, 18)
+imagesc(x,y,abs(E_Mie_sca))
+axis square
+colorbar
+title('Mie |E|')
+xlim([-2*rad 2*rad])
+ylim([-2*rad 2*rad])
+
+subplot(4, 5, 19)
+imagesc(x,y,angle(E_Mie_sca))
+axis square
+colorbar
+title('Mie \angle E')
+xlim([-2*rad 2*rad])
+ylim([-2*rad 2*rad])
+
+subplot(4, 5, 20)
+imagesc(x,y,abs(E_Mie_sca).^2)
+axis square
+colorbar
+title('Mie I')
+xlim([-2*rad 2*rad])
+ylim([-2*rad 2*rad])
+
+set(gcf, 'Position', get(0, 'Screensize'));
+saveas(gcf,'MLB4order.png')
+
+disp('job done')
+
+figure
+hold on
+plot(x, abs(E_MLB_sca(round(end/2),:)).^2,'LineWidth',4);
+plot(x, abs(E_MLB2_sca(round(end/2),:)).^2,'LineStyle',"--",'LineWidth',4);
+plot(x, abs(E_MLB4_sca(round(end/2),:)).^2,'LineStyle',":",'LineWidth',4);
+plot(x, abs(E_Mie_sca(round(end/2),:)).^2,'LineStyle',"-.",'LineWidth',4);
+legend('MLB','MLB2','MSB4','Mie')
+xlim([-2*rad 2*rad])
+saveas(gcf,'MLB_compare.png')

@@ -1,0 +1,212 @@
+clear variables; close all; clc; addpath(genpath('../Functions'));Units
+
+% Box
+lambda0 = 1*um; % center wavelength
+n_imm = 1;
+lambda  = lambda0/n_imm; k0 = 2*pi/lambda;
+
+Box = [200*um, 200*um, 30*um];
+dr  = [ 100*nm,  100*nm,100*nm];
+[Box,N] = Box_Regularization(Box,dr);
+
+[x, y, z, fx, fy, dfx, dfy, X, Y, FX, FY] = coordinates(N, dr);
+
+% Generate the input plane wave
+thetain = 17/180*pi; % input angle
+[thetain,fxin] = Angle_Regularization(thetain,lambda,dfx);
+uin = exp(1i*2*pi*fxin*X);
+
+% The sphere
+%shape = 'sphere';
+%nsphere=1.2;%1.2;
+%rad = 2*um;
+%MakeSphereHDF5(rad, [nsphere,n_imm], Box, X, Y, z, N, dr,k0);
+
+%shape = 'cube';
+%ncube=1.05;
+%W = [8*um, 8*um, 5*um];
+%MakeCubeHDF5(W, [ncube,n_imm], Box, X, Y, z, N, dr,k0)
+
+shape = 'softball';
+n_center=1.3;%1.2;
+sigma = 8*um;
+MakeSoftballHDF5(sigma, [n_center,n_imm], Box, X, Y, z,N,dr, k0);
+
+% small box for MOM
+box = [4*sigma, 4*sigma, 4*sigma];%1.01*W;%[4*sigma, 4*sigma, 4*sigma]; % [2.1*rad, 2.1*rad, 2.1*rad]; % [4*sigma, 4*sigma, 4*sigma];1.01*W;
+
+% Correct ouput wave
+uin_xy = exp(1i*2*pi*fxin*X)*exp(1i*2*pi*(z(end)-z(1)+dr(3))*cos(thetain)/lambda);
+
+[X1,Z1] = meshgrid(x,z);
+uin_xz = exp(1i*2*pi*fxin*X1).*exp(1i*2*pi*(Z1-z(1)+dr(3))*cos(thetain)/lambda);
+
+[Y1,Z1] = meshgrid(y,z);
+uin_yz = exp(1i*2*pi*(Z1-z(1)+dr(3))*cos(thetain)/lambda);
+
+x0_index = find(x==0,1);
+y0_index = find(y==0,1);
+
+% initialize
+%udL = uin;
+Pdz  = Propagator(lambda,FX,FY,dr(3));
+Gamma = Gammadz(lambda,FX,FY);
+
+dGk = 1;
+Eps = n_imm^2/lambda^2*0.025;
+Gdz  = G_kx_ky(FX,FY,n_imm,lambda,  dr(3),dGk,Eps)./dr(1)./dr(2);%GOlivier(X, Y, dr(1), dr(2),   dr(3), k0);
+dGk = -0.001;
+Eps = 0;
+Gdz1  = G_kx_ky(FX,FY,n_imm,lambda,  dr(3),dGk,Eps)./dr(1)./dr(2);
+
+dGk = 0;
+Eps = n_imm^2/lambda^2*0.0000000025;
+Gdz1p  = G_kx_ky(FX,FY,n_imm,lambda,  dr(3),dGk,Eps)./dr(1)./dr(2);
+
+h = find(~isfinite(Gdz1))
+[i,j] = ind2sub(size(Gdz1),h)
+
+norm(Gdz1-Gdz1p,2)/norm(Gdz1,2)
+
+Gdz2  =GOlivier(X, Y, dr(1), dr(2),   dr(3), k0);
+Diagnose_Green(Gdz, fx, fy, lambda);
+Diagnose_Green(Gdz1, fx, fy, lambda);
+Diagnose_Green(Gdz2, fx, fy, lambda);
+[U_MLB_xy, U_MLB_xz, U_MLB_yz]=MLB(shape,uin,Gdz,Pdz, uin_xy, uin_xz, uin_yz, x0_index, y0_index);
+[U_MLB1_xy, U_MLB1_xz, U_MLB1_yz]=MLB(shape,uin,Gdz1,Pdz, uin_xy, uin_xz, uin_yz, x0_index, y0_index);
+[U_MLB2_xy, U_MLB2_xz, U_MLB2_yz]=MLB(shape,uin,Gdz2,Pdz, uin_xy, uin_xz, uin_yz, x0_index, y0_index);
+
+figure
+hold on
+plot(fx, abs(Gdz(:,round(end/2))));
+plot(fx, abs(Gdz1(:,round(end/2))));
+plot(fx, abs(Gdz2(:,round(end/2))));
+legend('regularize','clip','Olivior')
+set(gcf, 'Position', get(0, 'Screensize'));
+
+figure
+hold on
+plot(fx, angle(Gdz(:,round(end/2))));
+plot(fx, angle(Gdz1(:,round(end/2))));
+plot(fx, angle(Gdz2(:,round(end/2))));
+legend('regularize','clip','Olivior')
+set(gcf, 'Position', get(0, 'Screensize'));
+
+figure_window = [-Box(1)/8/um Box(1)/8/um]./2;
+
+figure
+subplot(2,5,1)
+imagesc(x/um,y/um,abs(U_MLB_xy))
+axis square
+colorbar
+title('|Us_{out}|')
+xlim(figure_window)
+ylim(figure_window)
+xlabel('x(um)')
+ylabel('y(um)')
+
+subplot(2,5,6)
+imagesc(x/um,y/um,angle(U_MLB_xy))
+axis square
+colorbar
+title('\angle Us_{out}')
+xlim(figure_window)
+ylim(figure_window)
+xlabel('x(um)')
+ylabel('y(um)')
+
+subplot(2,5,[2,7])
+imagesc(z/um,x/um,abs(U_MLB_xz.'))
+axis square
+colorbar
+title('|Us_{xz}|')
+axis equal
+xlabel('z(um)')
+ylabel('x(um)')
+
+subplot(2,5,[3,8])
+imagesc(z/um,x/um,angle(U_MLB_xz.'))
+axis square
+colorbar
+title('\angle Us_{xz}')
+axis equal
+xlabel('z(um)')
+ylabel('x(um)')
+
+subplot(2,5,[4,9])
+imagesc(z/um,y/um,abs(U_MLB_yz.'))
+axis square
+colorbar
+title('|Us_{yz}|')
+axis equal
+xlabel('z(um)')
+ylabel('y(um)')
+
+subplot(2,5,[5,10])
+imagesc(z/um,y/um,angle(U_MLB_yz.'))
+axis square
+colorbar
+title('\angle Us_{yz}')
+axis equal
+xlabel('z(um)')
+ylabel('y(um)')
+
+sgtitle('MLB')
+set(gcf, 'Position', get(0, 'Screensize'));
+set(findall(gcf,'-property','FontSize'),'FontSize',30)
+
+
+scaling = max(max(abs(U_MLB_xy)));
+
+figure
+subplot(2,2,1)
+imagesc(x/um,y/um,abs(U_MLB_xy)./scaling)
+axis square
+colorbar
+title('|Us_{out}|')
+xlim(figure_window)
+ylim(figure_window)
+xlabel('x(um)')
+ylabel('y(um)')
+set(gca,'YDir','normal');
+colormap gray;
+clim([0 1])
+
+subplot(2,2,3)
+imagesc(x/um,y/um,angle(U_MLB_xy))
+axis square
+colorbar
+title('|Us_{out}|')
+xlim(figure_window)
+ylim(figure_window)
+xlabel('x(um)')
+ylabel('y(um)')
+set(gca,'YDir','normal');
+colormap gray;
+
+subplot(2,2,2)
+imagesc(x/um,y/um,abs(U_MLB1_xy)./scaling)
+axis square
+colorbar
+title('|Us_{out}|')
+xlim(figure_window)
+ylim(figure_window)
+xlabel('x(um)')
+ylabel('y(um)')
+set(gca,'YDir','normal');
+colormap gray;
+clim([0 1])
+
+subplot(2,2,4)
+imagesc(x/um,y/um,angle(U_MLB1_xy))
+axis square
+colorbar
+title('|Us_{out}|')
+xlim(figure_window)
+ylim(figure_window)
+xlabel('x(um)')
+ylabel('y(um)')
+set(gca,'YDir','normal');
+colormap gray;
+
+set(gcf, 'Position', get(0, 'Screensize'));
