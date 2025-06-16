@@ -1,0 +1,13 @@
+function [E_sca_scalar_Mie_1D] = scalarMie(l_max,k,nsphere,rad,theta1D)
+% Recovery of Absorption Spectra from Fourier Transform Infrared (FT-IR) Microspectroscopic Measurements of Intact Spheres
+%Thomas van Dijk,David Mayerich,P. Scott Carney,Rohit Bhargava
+
+l     = ( 0 : l_max );
+
+E_sca_scalar_Mie_1D = zeros(size(theta1D));
+for ii = 1:length(theta1D)
+    blhl = Calc_blhl( l, k/2/pi, nsphere, rad );
+    Pl = legendreP(l,cos(theta1D(ii)));
+    E_sca_scalar_Mie_1D(ii) = sum(1i.^ii.*(2.*l+1).*blhl.*Pl); % Eq. 12.22
+end
+end

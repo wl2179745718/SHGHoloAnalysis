@@ -1,0 +1,35 @@
+﻿Certain electromagnetic scattering problems have analytical solutions. In the spherical coordinate system, the solutions are expressed in the series form of the products of Bessel functions, associative Legendre polynomials, and exponential functions. This package contains the code that computes the field solutions as 
+
+a) a planewave scattered by a PEC sphere,
+a) a planewave scattered by a dielectric sphere,
+b) a planewave scattered by a multi-layer dielectric sphere.
+
+The solutions are constructed through the use of the radial component of the magnetic and vector potentials [Harrington2001]. The scattering problem of a PEC sphere is on pp. 650 in [Balanis1989]. The scattering problem of a homogeneous dielectric sphere is on pp. 297 of [Harrington2001]. The solution to the the scattering problem of a multi-layer sphere is acquired similarly by solving a linear system for the field coefficients, which is constructed by matching the boundary conditions. A discussion how to solve this problem is available in [Chew1995]. There is also wealthy amount of work on accurately acquiring the coefficients of the field scattered by a multi-layer sphere. See [Pena2009] and the references there in.
+
+The following scripts demonstrate the use of this package:
+
+Balanis1989PECSphereMonostaticRCS.m
+Djordjevic2004.m
+plotDielectricSphereTotalFieldUnderPlaneWave.m
+Ruck1970DielectricSphereBistaticRCS.m
+Ruck1970PECSphereBistaticRCS.m
+
+This code computes the exact fields both inside and outside the sphere. It provides a visualization of the fields. It may serve to verify the implementations of the numerical methods to solve Maxwell's equations.
+
+
+References:
+
+[Balanis19809] C. A. Balanis, Advanced Engineering Electromagnetics. New York, NY: John Wiley & Sons, Inc., 1989.
+
+[Chew1995] W. C. Chew, Waves and Fields in Inhomogeneous Media. Piscataway, NJ: IEEE Press, 1995.
+
+[Djordjevic2004] M. Djordjevic and B. M. Notaros, "Double higher order method of moments for surface integral equation model of metallic and dielectric antennas and scatterers," IEEE Transactions on Antennas and Propagation, vol. 52, no. 8, pp. 2118-2129, 2004.
+
+[Harrington2001] R. F. Harrington, Time-Harmonic Electromagnetic Fields. Piscataway, NJ: IEEE Press, 2001.
+
+[Pena2009] O. Pena and U. Pal, "Scattering of electromagnetic radiation by a multilayered sphere," Computer Physics Communications , vol. 180, no. 11, pp. 2348-2354, 2009.
+
+[Ruck1970] G. T. Ruck and , D. E. Barrick, W. D. Stuart, and C. K. Krichbaum, Radar Cross Section Handbook. New York, NY: Plenum Press, 1970.
+
+[Wiscombe1980] W. J. Wiscombe, "Improved Mie scattering algorithms," Applied Optics, vol. 19, no. 9, pp. 1505–1509,
+1980.
