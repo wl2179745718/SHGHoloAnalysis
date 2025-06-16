@@ -1,0 +1,51 @@
+function [] = Diagnose_Propagator(X, Y, z, dr, x0_index,y0_index, z0_index, Pdz, k0, lambda)
+
+src = zeros(size(X)); 
+
+src(x0_index,y0_index)=1; 
+
+z_positive = z(z0_index+1:end);
+
+parfor ii = 1:size(z_positive,2)
+
+fprintf(['Diagnosing propagator: ', num2str([ii]),'/',num2str([size(z_positive,2)]),'\n'])
+
+G1 = -exp(1i*k0*sqrt((z_positive(ii)+dr(3))^2+ X.^2 + Y.^2))./sqrt((z_positive(ii)+dr(3))^2+ X.^2 + Y.^2); 
+
+G2 = -exp(1i*k0*sqrt((z_positive(ii))^2+ X.^2 + Y.^2))./sqrt((z_positive(ii))^2+ X.^2 + Y.^2); 
+
+G3 = myifft(Pdz.*(myfft(G2))); 
+
+errorG(ii) = norm(G1 - G3,2)/norm(G1,2);
+
+end
+
+figure('Name','Diagnose: error in the propagator')
+subplot(2,1,1)
+plot(z_positive/lambda,errorG)
+text(z_positive(end)/lambda/2, 0.9*max(errorG), ['dz = ', num2str(dr(3)/lambda),' \lambda'], 'FontSize', 30); 
+xlabel('z(\lambda)')
+ylabel('error')
+set(gcf, 'Position', get(0, 'Screensize'));
+subplot(2,1,2)
+[A,map] = imread("Diagnose Propagator.png");
+imshow(A,map)
+
+
+for ii = 1:size(z_positive,2)
+
+fprintf(['Diagnosing propagator: ', num2str([ii]),'/',num2str([size(z_positive,2)]),'\n'])
+
+G1 = -exp(1i*k0*sqrt((z_positive(ii)+dr(3))^2+ X.^2 + Y.^2))./sqrt((z_positive(ii)+dr(3))^2+ X.^2 + Y.^2); 
+
+G2 = -exp(1i*k0*sqrt((z_positive(ii))^2+ X.^2 + Y.^2))./sqrt((z_positive(ii))^2+ X.^2 + Y.^2); 
+
+G3 = myifft(Pdz.*(myfft(G2))); 
+
+errorG(ii) = norm(G1 - G3,2)/norm(G1,2);
+
+end
+
+
+
+end
